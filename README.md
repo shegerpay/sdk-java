@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" alt="ShegerPay" width="200" /></p>
+
 # ShegerPay Java SDK
 
 Official Java SDK for [ShegerPay](https://shegerpay.com) — Ethiopian payment verification.
