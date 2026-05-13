@@ -7,7 +7,10 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -185,6 +188,156 @@ public class ShegerPay {
             throw new ShegerPayException("Request failed: " + e.getMessage());
         }
     }
+
+    private Map<String, Object> doJsonRequest(String method, String path, Map<String, Object> data)
+            throws ShegerPayException {
+        return parseJson(doRawJsonRequest(method, path, data));
+    }
+
+    private String doRawJsonRequest(String method, String path, Map<String, Object> data)
+            throws ShegerPayException {
+        try {
+            URL url = new URL(baseUrl + path);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(timeout);
+            conn.setReadTimeout(timeout);
+            conn.setRequestProperty("X-API-Key", apiKey);
+            conn.setRequestProperty("User-Agent", "ShegerPay-Java-SDK/" + VERSION);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            if (data != null && !"GET".equals(method) && !"DELETE".equals(method)) {
+                conn.setDoOutput(true);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(toJson(data).getBytes(StandardCharsets.UTF_8));
+                }
+            }
+
+            int status = conn.getResponseCode();
+            if (status == 204) {
+                return "{}";
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(
+                status >= 400 ? conn.getErrorStream() : conn.getInputStream()
+            ));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line);
+            }
+            reader.close();
+
+            if (status == 401) {
+                throw new ShegerPayException("Invalid API key");
+            }
+            if (status >= 400) {
+                throw new ShegerPayException("ShegerPay error: " + response.toString());
+            }
+            return response.toString();
+        } catch (Exception e) {
+            if (e instanceof ShegerPayException) throw (ShegerPayException) e;
+            throw new ShegerPayException("Request failed: " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> createPromoCode(Map<String, Object> params) throws ShegerPayException {
+        return doJsonRequest("POST", "/api/v1/promo-codes/", promoPayload(params));
+    }
+
+    public List<Map<String, Object>> listPromoCodes() throws ShegerPayException {
+        return parseJsonArray(doRawJsonRequest("GET", "/api/v1/promo-codes/", null));
+    }
+
+    public Map<String, Object> updatePromoCode(String codeId, Map<String, Object> params) throws ShegerPayException {
+        return doJsonRequest("PATCH", "/api/v1/promo-codes/" + codeId, promoPayload(params));
+    }
+
+    public Map<String, Object> deletePromoCode(String codeId) throws ShegerPayException {
+        return doJsonRequest("DELETE", "/api/v1/promo-codes/" + codeId, null);
+    }
+
+    public Map<String, Object> validatePromoCode(String code, double amount, Map<String, Object> options) throws ShegerPayException {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("code", code);
+        payload.put("amount", amount);
+        if (options != null) payload.putAll(options);
+        return doJsonRequest("POST", "/api/v1/promo-codes/validate", payload);
+    }
+
+    public Map<String, Object> redeemPromoCode(String code, double amount, String transactionId, Map<String, Object> options) throws ShegerPayException {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("code", code);
+        payload.put("amount", amount);
+        payload.put("transaction_id", transactionId);
+        if (options != null) payload.putAll(options);
+        return doJsonRequest("POST", "/api/v1/promo-codes/redeem", payload);
+    }
+
+    public Map<String, Object> applyPaymentLinkCoupon(String shortCode, String code, Double amount, Integer quantity) throws ShegerPayException {
+        return applyPaymentLinkCoupon(shortCode, code, amount, quantity, null, null);
+    }
+
+    public Map<String, Object> applyPaymentLinkCoupon(String shortCode, String code, Double amount, Integer quantity, String provider, String customerIdentifier) throws ShegerPayException {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("code", code);
+        payload.put("quantity", quantity == null ? 1 : quantity);
+        if (amount != null) payload.put("amount", amount);
+        if (provider != null) payload.put("provider", provider);
+        if (customerIdentifier != null) payload.put("customer_identifier", customerIdentifier);
+        return doJsonRequest("POST", "/api/v1/payment-links/" + shortCode + "/apply-coupon", payload);
+    }
+
+    public Map<String, Object> getPaymentLinkOrderStatus(String shortCode, String orderId) throws ShegerPayException {
+        if (shortCode == null || shortCode.isEmpty()) throw new ShegerPayException("shortCode is required");
+        if (orderId == null || orderId.isEmpty()) throw new ShegerPayException("orderId is required");
+        return doJsonRequest("GET", "/api/v1/payment-links/" + shortCode + "/orders/" + orderId + "/status", null);
+    }
+
+    private Map<String, Object> promoPayload(Map<String, Object> params) {
+        Map<String, Object> payload = new HashMap<>();
+        if (params == null) return payload;
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            payload.put(toSnakeCase(entry.getKey()), entry.getValue());
+        }
+        return payload;
+    }
+
+    private String toSnakeCase(String key) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < key.length(); i++) {
+            char ch = key.charAt(i);
+            if (Character.isUpperCase(ch)) {
+                out.append('_').append(Character.toLowerCase(ch));
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
+    }
+
+    private String toJson(Map<String, Object> data) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (entry.getValue() == null) continue;
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"").append(escapeJson(entry.getKey())).append("\":");
+            Object value = entry.getValue();
+            if (value instanceof Number || value instanceof Boolean) {
+                json.append(value.toString());
+            } else {
+                json.append("\"").append(escapeJson(value.toString())).append("\"");
+            }
+        }
+        json.append("}");
+        return json.toString();
+    }
+
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
     
     /**
      * Simple JSON parser (for demo - use Jackson or Gson in production)
@@ -215,6 +368,26 @@ public class ShegerPay {
         }
         return result;
     }
+
+    private List<Map<String, Object>> parseJsonArray(String json) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        json = json == null ? "" : json.trim();
+        if (!json.startsWith("[") || !json.endsWith("]")) {
+            return result;
+        }
+        String inner = json.substring(1, json.length() - 1).trim();
+        if (inner.isEmpty()) {
+            return result;
+        }
+        String[] objects = inner.split("\\},\\s*\\{");
+        for (String object : objects) {
+            String normalized = object;
+            if (!normalized.startsWith("{")) normalized = "{" + normalized;
+            if (!normalized.endsWith("}")) normalized = normalized + "}";
+            result.add(parseJson(normalized));
+        }
+        return result;
+    }
     
     /**
      * Verify webhook signature
@@ -232,10 +405,42 @@ public class ShegerPay {
                 hexString.append(hex);
             }
             String expected = "sha256=" + hexString.toString();
-            return expected.equals(signature);
+            return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public static boolean verifyRedirectSignature(Map<String, Object> params, String signature, String secret) {
+        try {
+            double amount = Double.parseDouble(String.valueOf(params.getOrDefault("amount", "0")));
+            String payload = String.join("|",
+                String.valueOf(firstParam(params, "checkout_session_id", "checkoutSessionId")),
+                String.valueOf(firstParam(params, "order_id", "orderId")),
+                String.valueOf(firstParam(params, "short_code", "shortCode")),
+                String.format(java.util.Locale.US, "%.2f", amount),
+                String.valueOf(params.getOrDefault("currency", "ETB")),
+                String.valueOf(params.getOrDefault("status", "paid"))
+            );
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            String normalized = signature == null ? "" : signature.replaceFirst("^sha256=", "");
+            return MessageDigest.isEqual(hexString.toString().getBytes(StandardCharsets.UTF_8), normalized.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static Object firstParam(Map<String, Object> params, String snake, String camel) {
+        Object value = params.get(snake);
+        return value != null ? value : params.getOrDefault(camel, "");
     }
     
     // --- Inner Classes ---
