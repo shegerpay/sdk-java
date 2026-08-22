@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.shegerpay</groupId>
+  <artifactId>shegerpay-sdk</artifactId>
+  <version>2.2.1</version>
+  <packaging>jar</packaging>
+
+  <name>ShegerPay Java SDK</name>
+  <description>Official Java SDK for the ShegerPay Payment Verification Gateway. Verify Ethiopian bank and mobile money payments (CBE, Telebirr, BOA, Dashen, Awash, eBirr), create payment links, and handle webhooks.</description>
+  <url>https://github.com/shegerpay/sdk-java</url>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>shegerpay</id>
+      <name>ShegerPay</name>
+      <email>dev@shegerpay.com</email>
+      <url>https://shegerpay.com</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/shegerpay/sdk-java.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/shegerpay/sdk-java.git</developerConnection>
+    <url>https://github.com/shegerpay/sdk-java</url>
+    <tag>v2.2.1</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub Issues</system>
+    <url>https://github.com/shegerpay/sdk-java/issues</url>
+  </issueManagement>
+
+  <properties>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <!--
+    No dependencies by design: the SDK uses only the JDK (java.net.HttpURLConnection,
+    javax.crypto for HMAC, and a hand-written JSON parser). That keeps it drop-in
+    for any Java project without dragging in a HTTP or JSON library.
+  -->
+
+  <build>
+    <sourceDirectory>${project.basedir}</sourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals><goal>jar-no-fork</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.6.3</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!--
+      Maven Central requires every artifact to be GPG-signed. Activate with
+      `mvn -Prelease deploy` once a signing key and Sonatype credentials exist.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.4</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
